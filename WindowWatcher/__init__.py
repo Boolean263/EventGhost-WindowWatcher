@@ -9,7 +9,7 @@ eg.RegisterPlugin(
     author = "David Perry <d.perry@utoronto.ca>",
     version = "0.0.1",
     kind = "other",
-    description = "Detect changes in Windows.",
+    description = "Detect when the active window changes. Also detect new windows.",
     url = "https://github.com/Boolean263/EventGhost-WindowWatcher",
     guid = "{051a79aa-80f7-4150-bead-538537d17dd5}",
 )
@@ -22,21 +22,81 @@ from eg.WinApi import GetWindowText, GetClassName
 from threading import Event, Thread
 
 class WindowWatcher(eg.PluginBase):
+    """
+    Watches for changes in the active window, by periodically seeing which
+    one is active. Also detects newly opened/closed windows by keeping a list
+    of what windows are open.
+    """
+
+    # Internal state
     stopThreadEvent = None
-    interval = 1.0
     lastWindow = None
+    allWindows = set()
+
+    # Configurable options
     showFocus = True
     showBlur = False
     showOpen = False
     showClose = False
     setAsFound = False
-    allWindows = set()
+    interval = 1.0
+
+    # showClose has been removed from the configurable options for now,
+    # because we (obviously) can't get window properties from a window
+    # that is no longer there. A future version may allow this by tracking
+    # the properties of windows it sees open, so it can provide those to
+    # Close events.
+
+    def Configure(self, interval=1.0, setAsFound=False, showFocus=True, showBlur=False, showOpen=False):
+        """Display the configuration dialog for this plugin."""
+
+        panel = eg.ConfigPanel()
+        pollCtrl = panel.SpinNumCtrl(interval, min=0.1, max=60)
+        foundCtrl = panel.CheckBox(setAsFound, "Set target window as Found")
+        focusCtrl = panel.CheckBox(showFocus, "On Window Activate")
+        blurCtrl = panel.CheckBox(showBlur, "On Window Deactivate")
+        openCtrl = panel.CheckBox(showOpen, "On Window Open")
+        #closeCtrl = panel.CheckBox(showClose, "On Window Close")
+
+        sizer = wx.GridBagSizer(5, 5)
+        expand = wx.EXPAND
+        sizer.AddMany([
+            (panel.StaticText("Poll for changes:"), (0, 0), (1, 1)),
+            (pollCtrl, (0, 1), (1, 1)),
+            (panel.StaticText("seconds"), (0, 2), (1, 1)),
+            (panel.StaticText("Trigger Events:"), (1, 0), (1, 2)),
+            (focusCtrl, (2, 1), (1, 1)),
+            (blurCtrl, (3, 1), (1, 1)),
+            (openCtrl, (4, 1), (1, 1)),
+            #(closeCtrl, (5, 1), (1, 1)),
+            (panel.StaticText(""), (6, 0), (1, 2)),
+            (foundCtrl, (7, 0), (1, 2)),
+            (panel.StaticText("This option makes the target window the subject of\nfuture Window actions in your macro."), (8, 1), (1, 2)),
+        ])
+        panel.sizer.Add(sizer, 1, wx.EXPAND)
+
+        while panel.Affirmed():
+            panel.SetResult(
+                pollCtrl.GetValue() or 1.0,
+                foundCtrl.GetValue(),
+                focusCtrl.GetValue(),
+                blurCtrl.GetValue(),
+                openCtrl.GetValue(),
+                #closeCtrl.GetValue(),
+            )
 
     def __init__(self):
         #print "WindowWatcher inited"
         pass
 
-    def __start__(self):
+    def __start__(self, interval=1.0, setAsFound=False, showFocus=True, showBlur=False, showOpen=False):
+        self.interval = interval
+        self.setAsFound = setAsFound
+        self.showFocus = showFocus
+        self.showBlur = showBlur
+        self.showOpen = showOpen
+        #self.showClose = showClose
+
         if self.showOpen or self.showClose:
             self.allWindows = self.GetAllWindows()
         self.stopThreadEvent = Event()
@@ -50,10 +110,11 @@ class WindowWatcher(eg.PluginBase):
         self.stopThreadEvent.set()
 
     def __close__(self):
-        print "WindowWatcher closed"
+        #print "WindowWatcher closed"
         pass
 
     def GetAllWindows(self):
+        """Get a list of all currently open windows. Return it as a set."""
         s = set()
         def cb(hwnd, args):
             s.add(hwnd)
@@ -64,12 +125,16 @@ class WindowWatcher(eg.PluginBase):
 
 
     def WindowEvent(self, eventType, window_id):
-        payload = { "id": window_id }
-        payload["process"] = GetWindowProcessName(window_id).upper()
-        payload["title"] = GetWindowText(window_id)
-        payload["class"] = GetClassName(window_id)
-        payload["is_visible"] = win32gui.IsWindowVisible(window_id)
-        payload["is_enabled"] = win32gui.IsWindowEnabled(window_id)
+        """Trigger an EventGhost event for the given window ID."""
+
+        payload = {
+            "id": window_id,
+            "process": GetWindowProcessName(window_id).upper(),
+            "title": GetWindowText(window_id),
+            "class": GetClassName(window_id),
+            "is_visible": win32gui.IsWindowVisible(window_id),
+            "is_enabled": win32gui.IsWindowEnabled(window_id),
+        }
 
         self.TriggerEvent("{}.{}".format(eventType, payload["process"]),
             payload=payload)
@@ -78,6 +143,8 @@ class WindowWatcher(eg.PluginBase):
             eg.lastFoundWindows[:] = [window_id]
 
     def ThreadLoop(self, stopThreadEvent):
+        """Main thread loop. Polls current and open windows every interval."""
+
         while not stopThreadEvent.isSet():
             if self.showFocus or self.showBlur:
                 # Figure out if the current window has changed
@@ -86,7 +153,7 @@ class WindowWatcher(eg.PluginBase):
                     if self.showBlur:
                         self.WindowEvent("Blur", self.lastWindow)
                     if self.showFocus:
-                    self.WindowEvent("Focus", thisWindow)
+                        self.WindowEvent("Focus", thisWindow)
                     self.lastWindow = thisWindow
 
             if self.showOpen or self.showClose:
