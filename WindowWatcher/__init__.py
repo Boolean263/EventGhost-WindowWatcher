@@ -21,6 +21,27 @@ from eg.WinApi import GetWindowText, GetClassName
 
 from threading import Event, Thread
 
+class PrettyBunch(eg.Utils.Bunch):
+    """
+    Tweak to EG's Bunch object to make it print pretty
+    when it's used as an event payload.
+    I may eventually propose this as an improvement to EG core.
+    """
+    def __str__(self):
+        """
+        EG doesn't use this when it shows the event payload.
+        Perhaps it should?
+        """
+        return self.__dict__.__str__()
+    def __repr__(self):
+        """
+        EG uses this to show the event's payload.
+        This is where I make the object pretty, but it technically breaks
+        the Python rule of the representation being valid Python code that
+        you can re-evaluate to get the object back.
+        """
+        return ", ".join(k+"="+repr(v) for k, v in self.__dict__.items())
+
 class WindowWatcher(eg.PluginBase):
     """
     Watches for changes in the active window, by periodically seeing which
@@ -127,16 +148,16 @@ class WindowWatcher(eg.PluginBase):
     def WindowEvent(self, eventType, window_id):
         """Trigger an EventGhost event for the given window ID."""
 
-        payload = {
-            "id": window_id,
-            "process": GetWindowProcessName(window_id).upper(),
-            "title": GetWindowText(window_id),
-            "class": GetClassName(window_id),
-            "is_visible": win32gui.IsWindowVisible(window_id),
-            "is_enabled": win32gui.IsWindowEnabled(window_id),
-        }
+        payload = PrettyBunch(
+            id=window_id,
+            process=GetWindowProcessName(window_id).upper(),
+            title=GetWindowText(window_id),
+            window_class=GetClassName(window_id),
+            is_visible=win32gui.IsWindowVisible(window_id),
+            is_enabled=win32gui.IsWindowEnabled(window_id),
+        )
 
-        self.TriggerEvent("{}.{}".format(eventType, payload["process"]),
+        self.TriggerEvent("{}.{}".format(eventType, payload.process),
             payload=payload)
 
         if self.setAsFound:
@@ -151,9 +172,9 @@ class WindowWatcher(eg.PluginBase):
                 thisWindow = win32gui.GetForegroundWindow()
                 if thisWindow != self.lastWindow:
                     if self.showBlur:
-                        self.WindowEvent("Blur", self.lastWindow)
+                        self.WindowEvent("Deactivate", self.lastWindow)
                     if self.showFocus:
-                        self.WindowEvent("Focus", thisWindow)
+                        self.WindowEvent("Activate", thisWindow)
                     self.lastWindow = thisWindow
 
             if self.showOpen or self.showClose:
