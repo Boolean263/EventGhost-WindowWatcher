@@ -65,7 +65,7 @@ is an object with the following properties:
 ## Downloads and Support
 
 Official releases of this plugin are being made available at
-[this thread on the EventGhost forums](http://www.eventghost.net/forum/viewtopic.php?f=9&t=????).
+[this thread on the EventGhost forums](http://www.eventghost.net/forum/viewtopic.php?f=9&t=9786).
 You can also provide
 feedback and request support there.
 
