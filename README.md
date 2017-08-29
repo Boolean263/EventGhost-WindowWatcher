@@ -1,5 +1,9 @@
 # EventGhost-WindowWatcher
 
+**This plugin is deprecated and no longer supported. You should
+look at
+[Boolean263/EventGhost-TaskMonitorPlus](https://github.com/Boolean263/EventGhost-TaskMonitorPlus) instead.**
+
 This program is not very useful on its own. It's a plugin for
 [EventGhost](http://www.eventghost.net/).
 EventGhost is an automation tool for MS Windows
